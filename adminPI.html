@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Raspberry</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <?php
+        //include "includes/DB.php";
+        include "includes/navbar.php";
+    ?>
+    <nav>
+        <ul>
+        <img class="logo_raspberry" src="img/logo_raspberry.png">
+            <li>
+                <a href="#temp">Température</a>
+            </li>
+            <li>
+                <a href="#proc">Processeur</a>
+            </li>
+            <li>
+                <a href="#ram">Ram</a>
+            </li>
+            <li>
+                <a href="#wifi">Wi-Fi</a>
+            </li>
+        </ul>
+        <div class="green"></div>
+    </nav>
+    <div class="title">
+        <p>Informations sur le Raspberry Pi :</p>
+        <a class="subtitle">(Voir plus d'informations)</a>
+    </div>
+    <div class="grid">
+        <div class="allbox">
+            <div class="box" id="temp">
+                <img class="logo" src="img/temp.png">
+                <h1> {{temp}} &deg;</h1>
+            </div>
+            <div class="box" id="proc">
+                <img class="logo" src="img/proc.png">
+                <h1> {{proc}} %</h1>
+            </div>
+            <div class="box" id="ram">
+                <img class="logo" src="img/ram.png">
+                <h1> {{ram}} %</h1>
+            </div>
+            <div class="box" id="wifi">
+                <img class="logo" src="img/wifi.png">
+                <h1> {{wifi}} ms</h1>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
