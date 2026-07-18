@@ -1,20 +1,49 @@
-# Système de Surveillance Raspberry Pi
+<div align="center">
 
-Ce dépôt permet de surveiller les performances d'un Raspberry Pi 4 via une interface web.
+<img src="img/logo_raspberry.png" width="90" alt="Raspberry Pi logo">
 
-![Dashboard](img/screenshot.png)
+# SiteStatsRaspberryPi
 
-## Architecture
+**Tableau de bord temps réel pour surveiller un Raspberry Pi** — température, CPU, RAM et latence réseau, servis via une petite API FastAPI et stockés en SQLite.
 
-- **db.py** : accès à la base **SQLite** partagée (table `data`), utilisée par le serveur web et par `mesure_valeur.py` en local.
-- **config.py** : charge la configuration depuis un fichier `.env` (aucun identifiant en dur dans le code).
-- **transfert_valeur.py** : serveur web **FastAPI** (remplace l'ancien serveur Tornado/MySQL). Il sert :
-  - `GET /` : le tableau de bord (`adminPI.html`), rempli avec la dernière mesure enregistrée en SQLite.
-  - `POST /api/measurements` : point d'entrée d'ingestion, protégé par un jeton `Bearer` (`API_TOKEN`), utilisé par les sources de mesure distantes.
-- **mesure_valeur.py** : à exécuter **sur la même machine** que le serveur (ex. le Raspberry Pi lui-même). Écrit directement dans le fichier SQLite via `db.py`.
-- **mesure_valeur_vps.py** : à exécuter sur une **machine distante**. Envoie ses mesures au serveur via une requête HTTP `POST /api/measurements` authentifiée par jeton — il n'a donc pas besoin d'accès direct à la base de données.
-- **adminPI.html** : template Jinja2 affiché par FastAPI.
-- **requirements.txt** : dépendances (FastAPI, uvicorn, python-dotenv, requests, psutil).
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688)
+![SQLite](https://img.shields.io/badge/database-SQLite-003B57)
+![License](https://img.shields.io/badge/config-.env-lightgrey)
+
+<img src="img/screenshot.png" width="700" alt="Aperçu du tableau de bord">
+
+</div>
+
+## Sommaire
+
+- [Fonctionnement](#fonctionnement)
+- [Configuration (.env)](#configuration-env)
+- [Installation](#installation)
+- [Lancer le projet](#lancer-le-projet)
+
+## Fonctionnement
+
+| Fichier | Rôle |
+|---|---|
+| `transfert_valeur.py` | Serveur **FastAPI** : sert le tableau de bord (`GET /`) et reçoit les mesures (`POST /api/measurements`, protégé par jeton) |
+| `mesure_valeur.py` | À lancer **sur la même machine** que le serveur (le Pi lui-même) — écrit directement dans SQLite |
+| `mesure_valeur_vps.py` | À lancer **depuis une machine distante** — envoie ses mesures au serveur en HTTP, authentifié par jeton |
+| `db.py` | Accès à la base **SQLite** (table `data`) |
+| `config.py` | Charge toute la configuration depuis `.env` — aucun identifiant en dur dans le code |
+| `adminPI.html` | Template Jinja2 du tableau de bord |
+
+```
+┌────────────────────┐        direct (SQLite)        ┌──────────────────────┐
+│  mesure_valeur.py   │ ─────────────────────────────▶│                      │
+│  (sur le Pi)        │                                │  transfert_valeur.py │──▶ GET / (dashboard)
+└────────────────────┘                                │  (serveur FastAPI)   │
+                                                        │                      │
+┌────────────────────┐   HTTP POST + jeton Bearer      │                      │
+│ mesure_valeur_vps.py│ ─────────────────────────────▶│                      │
+│  (machine distante)  │                                └──────────────────────┘
+└────────────────────┘
+```
 
 ## Configuration (.env)
 
@@ -38,42 +67,34 @@ PING_TARGET=google.com
 - Sur la machine qui héberge le serveur **et** `mesure_valeur.py` : renseignez `DB_PATH` et `API_TOKEN`.
 - Sur une machine distante qui exécute `mesure_valeur_vps.py` : renseignez `API_URL` (adresse publique du serveur) et le même `API_TOKEN` que le serveur.
 
-## Instructions pour lancer le site
+## Installation
 
-1. **Clonez le dépôt** :
-   ```bash
-   git clone https://github.com/Estemobs/SiteStatsRaspberryPi.git
-   ```
+```bash
+git clone https://github.com/Estemobs/SiteStatsRaspberryPi.git
+cd SiteStatsRaspberryPi
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # puis éditez .env
+```
 
-2. **Installez les dépendances** :
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
+## Lancer le projet
 
-3. **Configurez `.env`** (voir section ci-dessus).
-
-4. **Lancez le serveur web** (crée aussi la base SQLite si besoin) :
+1. **Démarrez le serveur** (crée aussi la base SQLite si besoin) :
    ```bash
    python transfert_valeur.py
    ```
 
-5. **Collectez des données** :
-   - **Depuis le Raspberry Pi / la machine du serveur** :
+2. **Collectez des données** :
+   - Depuis le Raspberry Pi / la machine du serveur :
      ```bash
      python mesure_valeur.py
      ```
-   - **Depuis un serveur distant** :
+   - Depuis un serveur distant :
      ```bash
      python mesure_valeur_vps.py
      ```
 
-6. **Accédez à l'interface utilisateur** dans votre navigateur à l'adresse :
-   ```
-   http://localhost:2006
-   ```
+3. **Ouvrez le tableau de bord** : [http://localhost:2006](http://localhost:2006)
 
-## Note
-
-Planifiez `mesure_valeur.py` (ou `mesure_valeur_vps.py`) via une tâche cron pour une mise à jour périodique des mesures.
+> Astuce : planifiez `mesure_valeur.py` (ou `mesure_valeur_vps.py`) via une tâche cron pour une mise à jour périodique des mesures.
