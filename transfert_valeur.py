@@ -1,51 +1,58 @@
 import os
-import tornado.web
-import mysql.connector
-import tornado.ioloop
-import tornado.websocket
-from tornado import template
 
-class IndexHandler(tornado.web.RequestHandler):
-    def get(self):
-        # Connexion à la base de données MariaDB
-        try:
-            conn = mysql.connector.connect(
-                host="", #adresse IP du serveur MySQL
-                user="", # Nom d'utilisateur pour la connexion à MySQL
-                password="", # Mot de passe pour la connexion à MySQL
-                database="" # Nom de la base de données à utiliser
-            )
-            print("Connexion à la base de données réussie")
-        except mysql.connector.Error as error:
-            print("Erreur de connexion à la base de données :", error)
-    
-        cursor = conn.cursor()
-    
-        # Récupération de toutes les données depuis la table 'data'
-        query = "SELECT temperature, cpu_usage, ram_usage, ping_time FROM data ORDER BY timestamp DESC LIMIT 1"
-        cursor.execute(query)
-        data = cursor.fetchone()
-        temp, cpu, ram, wifi = data if data else (None, None, None, None)  # Si aucune donnée n'est disponible, définissez-les à None
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-        conn.close()
+import db
+from config import settings
 
-        filename = 'adminPI.html'
-        loader = template.Loader('.')
-        self.write(loader.load(filename).generate(temp=temp, proc=cpu, ram=ram, wifi=wifi))
+BASE_DIR = os.path.dirname(__file__)
+
+app = FastAPI()
+templates = Jinja2Templates(directory=BASE_DIR)
+
+app.mount("/assets", StaticFiles(directory=os.path.join(BASE_DIR, "assets")), name="assets")
+app.mount("/img", StaticFiles(directory=os.path.join(BASE_DIR, "img")), name="img")
+app.mount("/vues", StaticFiles(directory=os.path.join(BASE_DIR, "vues")), name="vues")
 
 
-if __name__ == '__main__':
-    app = tornado.web.Application([
-        (r"/", IndexHandler),
-        (r"/assets/(.*)", tornado.web.StaticFileHandler, {"path": os.path.join(os.path.dirname(__file__), "assets")}),
-        (r"/img/(.*)", tornado.web.StaticFileHandler, {"path": os.path.join(os.path.dirname(__file__), "img")}),
-        (r"/vues/(.*)", tornado.web.StaticFileHandler, {"path": os.path.join(os.path.dirname(__file__), "vues")}),
-    ])
+@app.on_event("startup")
+def on_startup():
+    db.init_db()
 
-    port = 2006
-    app.listen(port)
-    print('Listening on rasbperrypi:{}'.format(port))
-    
-    # Démarrer la boucle d'événements Tornado dans le même processus
-    tornado.ioloop.IOLoop.current().start()
 
+@app.get("/", response_class=HTMLResponse)
+def index(request: Request):
+    data = db.get_latest()
+    temp, cpu, ram, wifi = data if data else (None, None, None, None)
+    return templates.TemplateResponse(
+        "adminPI.html",
+        {"request": request, "temp": temp, "proc": cpu, "ram": ram, "wifi": wifi},
+    )
+
+
+@app.post("/api/measurements")
+def create_measurement(payload: dict, authorization: str = Header(default="")):
+    if not settings.api_token:
+        raise HTTPException(status_code=503, detail="API_TOKEN n'est pas configuré côté serveur")
+    if authorization != f"Bearer {settings.api_token}":
+        raise HTTPException(status_code=401, detail="Jeton invalide")
+
+    required_fields = {"temperature", "cpu_usage", "ram_usage", "ping_time"}
+    missing = required_fields - payload.keys()
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Champs manquants: {', '.join(missing)}")
+
+    db.insert_measurement(
+        payload["temperature"], payload["cpu_usage"], payload["ram_usage"], payload["ping_time"]
+    )
+    return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    print(f"Listening on {settings.host}:{settings.port}")
+    uvicorn.run(app, host=settings.host, port=settings.port)
