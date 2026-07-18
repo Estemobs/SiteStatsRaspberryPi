@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -10,17 +11,19 @@ from config import settings
 
 BASE_DIR = os.path.dirname(__file__)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=BASE_DIR)
 
 app.mount("/assets", StaticFiles(directory=os.path.join(BASE_DIR, "assets")), name="assets")
 app.mount("/img", StaticFiles(directory=os.path.join(BASE_DIR, "img")), name="img")
 app.mount("/vues", StaticFiles(directory=os.path.join(BASE_DIR, "vues")), name="vues")
-
-
-@app.on_event("startup")
-def on_startup():
-    db.init_db()
 
 
 @app.get("/", response_class=HTMLResponse)
