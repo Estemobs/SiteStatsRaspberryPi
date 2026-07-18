@@ -2,45 +2,41 @@
 
 Ce dépôt permet de surveiller les performances d'un Raspberry Pi 4 via une interface web.
 
-## Fichiers du dépôt
+![Dashboard](img/screenshot.png)
 
-- **info.html** : Page web affichant les caractéristiques du Raspberry Pi 4.
-- **adminPI.html** : Interface utilisateur principale pour le système de surveillance.
-- **mesure_valeur.py** : Script Python pour mesurer et enregistrer les paramètres système dans une base de données MySQL. **Assurez-vous de renseigner vos informations de connexion MySQL dans le code** :
-  ```python
-  # Configurer la connexion à la base de données
-  db_connection = mysql.connector.connect(
-      host="", #adresse IP du serveur MySQL
-      user="",  # Nom d'utilisateur pour la connexion à MySQL
-      password="",  # Mot de passe pour la connexion à MySQL
-      database="" # Nom de la base de données à utiliser
-  )
-  ```
-  
-- **mesure_valeur_vps.py** : Script pour mesurer et enregistrer les paramètres système, destiné à être hébergé sur un serveur distant. **Renseignez vos informations de connexion à la base de données** :
-  ```python
-  # Configurer la connexion à la base de données
-  db_connection = mysql.connector.connect(
-      host="", #adresse IP du serveur MySQL distant 
-      user="",  # Nom d'utilisateur de MariaDB
-      password="",  # Mot de passe de MariaDB
-      database="" # Nom de la base de données à utiliser
-  )
-  ```
+## Architecture
 
-- **transfert_valeur.py** : Serveur web basé sur Tornado qui affiche les données système récupérées. **Vérifiez vos informations de connexion MySQL dans le code** :
-  ```python
-  # Connexion à la base de données MariaDB
-  try:
-      conn = mysql.connector.connect(
-          host="", #adresse IP du serveur MySQL
-          user="", # Nom d'utilisateur pour la connexion à MySQL
-          password="", # Mot de passe pour la connexion à MySQL
-          database="" # Nom de la base de données à utiliser
-      )
-  ```
+- **db.py** : accès à la base **SQLite** partagée (table `data`), utilisée par le serveur web et par `mesure_valeur.py` en local.
+- **config.py** : charge la configuration depuis un fichier `.env` (aucun identifiant en dur dans le code).
+- **transfert_valeur.py** : serveur web **FastAPI** (remplace l'ancien serveur Tornado/MySQL). Il sert :
+  - `GET /` : le tableau de bord (`adminPI.html`), rempli avec la dernière mesure enregistrée en SQLite.
+  - `POST /api/measurements` : point d'entrée d'ingestion, protégé par un jeton `Bearer` (`API_TOKEN`), utilisé par les sources de mesure distantes.
+- **mesure_valeur.py** : à exécuter **sur la même machine** que le serveur (ex. le Raspberry Pi lui-même). Écrit directement dans le fichier SQLite via `db.py`.
+- **mesure_valeur_vps.py** : à exécuter sur une **machine distante**. Envoie ses mesures au serveur via une requête HTTP `POST /api/measurements` authentifiée par jeton — il n'a donc pas besoin d'accès direct à la base de données.
+- **adminPI.html** : template Jinja2 affiché par FastAPI.
+- **requirements.txt** : dépendances (FastAPI, uvicorn, python-dotenv, requests, psutil).
 
-- **requirements.txt** : Liste des dépendances nécessaires pour exécuter les scripts Python.
+## Configuration (.env)
+
+Aucun secret n'est stocké dans le code. Copiez `.env.example` en `.env` et renseignez vos valeurs :
+
+```bash
+cp .env.example .env
+```
+
+```
+DB_PATH=data.db
+API_HOST=0.0.0.0
+API_PORT=2006
+API_TOKEN=            # générez-en un: python -c "import secrets; print(secrets.token_hex(32))"
+API_URL=http://localhost:2006/api/measurements
+PING_TARGET=google.com
+```
+
+`.env` est ignoré par git (voir `.gitignore`) et ne doit jamais être commité.
+
+- Sur la machine qui héberge le serveur **et** `mesure_valeur.py` : renseignez `DB_PATH` et `API_TOKEN`.
+- Sur une machine distante qui exécute `mesure_valeur_vps.py` : renseignez `API_URL` (adresse publique du serveur) et le même `API_TOKEN` que le serveur.
 
 ## Instructions pour lancer le site
 
@@ -50,32 +46,34 @@ Ce dépôt permet de surveiller les performances d'un Raspberry Pi 4 via une int
    ```
 
 2. **Installez les dépendances** :
-
    ```bash
+   python -m venv venv
+   source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-3. **Lancez le script pour collecter les données** :
-   - **Pour un Raspberry Pi** :
-     ```bash
-     python mesure_valeur.py
-     ```
-   - **Pour un serveur distant** :
-     ```bash
-     python mesure_valeur_vps.py
-     ```
+3. **Configurez `.env`** (voir section ci-dessus).
 
-4. **Lancez le serveur web** :
+4. **Lancez le serveur web** (crée aussi la base SQLite si besoin) :
    ```bash
    python transfert_valeur.py
    ```
 
-5. **Accédez à l'interface utilisateur** dans votre navigateur à l'adresse :
+5. **Collectez des données** :
+   - **Depuis le Raspberry Pi / la machine du serveur** :
+     ```bash
+     python mesure_valeur.py
+     ```
+   - **Depuis un serveur distant** :
+     ```bash
+     python mesure_valeur_vps.py
+     ```
+
+6. **Accédez à l'interface utilisateur** dans votre navigateur à l'adresse :
    ```
    http://localhost:2006
    ```
 
 ## Note
 
-Assurez-vous que la base de données est configurée correctement dans les scripts Python pour stocker les données.
-Si vous avez besoin d'autres modifications ou ajouts, n'hésitez pas à demander !
+Planifiez `mesure_valeur.py` (ou `mesure_valeur_vps.py`) via une tâche cron pour une mise à jour périodique des mesures.
